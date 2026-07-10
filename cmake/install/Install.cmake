@@ -230,6 +230,23 @@ elseif(WIN32)
 elseif(IOS)
     install(CODE "set(QGC_STAGING_BUNDLE_PATH \"${CMAKE_BINARY_DIR}/staging/${CMAKE_PROJECT_NAME}.app\")")
 
+    # Xcode's "Embed Frameworks" build phase never runs under the Ninja Multi-Config
+    # generator this project builds iOS with, so nothing copies the dynamically-linked
+    # frameworks into the bundle or sets up the @executable_path/Frameworks rpath.
+    # Replicate it manually: our own GStreamerMobile.framework build target, plus
+    # whatever qt_add_ios_ffmpeg_libraries() (cmake/platform/Apple.cmake) recorded on
+    # XCODE_EMBED_FRAMEWORKS when it linked Qt Multimedia's FFmpeg backend.
+    if(TARGET GStreamerMobileXcfw)
+        install(TARGETS GStreamerMobileXcfw FRAMEWORK DESTINATION "${CMAKE_PROJECT_NAME}.app/Frameworks")
+    endif()
+
+    get_target_property(_qgc_ios_ffmpeg_frameworks ${CMAKE_PROJECT_NAME} XCODE_EMBED_FRAMEWORKS)
+    if(NOT _qgc_ios_ffmpeg_frameworks)
+        set(_qgc_ios_ffmpeg_frameworks "")
+    endif()
+    install(CODE "set(QGC_IOS_EMBED_FRAMEWORKS \"${_qgc_ios_ffmpeg_frameworks}\")")
+    install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/EmbedIOSFrameworks.cmake")
+
     # No Apple Developer identity is configured for CI/local packaging, so the bundle
     # is ad-hoc signed. This produces a valid .ipa for inspection/re-signing (e.g.
     # AltStore, Sideloadly) but is NOT installable on a real device without a proper
