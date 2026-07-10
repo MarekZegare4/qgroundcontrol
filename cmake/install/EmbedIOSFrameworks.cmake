@@ -23,10 +23,33 @@ else()
             message(WARNING "QGC: iOS framework to embed not found, skipping: ${_fw}")
             continue()
         endif()
-        cmake_path(GET _fw FILENAME _fw_name)
+
+        set(_fw_source "${_fw}")
+        if(_fw MATCHES "\\.xcframework$")
+            # An .xcframework bundles one .framework per platform/arch slice
+            # (ios-arm64, ios-x86_64-simulator, ...). The binary's LC_LOAD_DYLIB
+            # references the flat @rpath/<name>.framework/<name> form, so pick the
+            # physical-device slice and embed only its inner .framework — same
+            # slice-selection convention as cmake/GStreamer/platform/IOS.cmake.
+            file(GLOB _qgc_ios_slice_dirs LIST_DIRECTORIES true "${_fw}/ios-*")
+            list(FILTER _qgc_ios_slice_dirs EXCLUDE REGEX "-(simulator|maccatalyst)$")
+            if(NOT _qgc_ios_slice_dirs)
+                message(WARNING "QGC: no device slice found in ${_fw}, skipping")
+                continue()
+            endif()
+            list(GET _qgc_ios_slice_dirs 0 _qgc_ios_slice_dir)
+            file(GLOB _qgc_ios_inner_fw LIST_DIRECTORIES true "${_qgc_ios_slice_dir}/*.framework")
+            if(NOT _qgc_ios_inner_fw)
+                message(WARNING "QGC: no .framework found in slice ${_qgc_ios_slice_dir}, skipping")
+                continue()
+            endif()
+            list(GET _qgc_ios_inner_fw 0 _fw_source)
+        endif()
+
+        cmake_path(GET _fw_source FILENAME _fw_name)
         message(STATUS "QGC: embedding iOS framework ${_fw_name}")
         file(REMOVE_RECURSE "${_qgc_ios_frameworks_dir}/${_fw_name}")
-        file(COPY "${_fw}" DESTINATION "${_qgc_ios_frameworks_dir}")
+        file(COPY "${_fw_source}" DESTINATION "${_qgc_ios_frameworks_dir}")
     endforeach()
 endif()
 
