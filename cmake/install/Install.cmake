@@ -247,6 +247,13 @@ elseif(IOS)
     install(CODE "set(QGC_IOS_EMBED_FRAMEWORKS \"${_qgc_ios_ffmpeg_frameworks}\")")
     install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/EmbedIOSFrameworks.cmake")
 
+    get_target_property(_qgc_ios_launch_screen ${CMAKE_PROJECT_NAME} QT_IOS_LAUNCH_SCREEN)
+    if(NOT _qgc_ios_launch_screen)
+        set(_qgc_ios_launch_screen "")
+    endif()
+    install(CODE "set(QGC_IOS_LAUNCH_SCREEN_SRC \"${_qgc_ios_launch_screen}\")")
+    install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/CompileIOSLaunchScreen.cmake")
+
     # No Apple Developer identity is configured for CI/local packaging, so the bundle
     # is ad-hoc signed. This produces a valid .ipa for inspection/re-signing (e.g.
     # AltStore, Sideloadly) but is NOT installable on a real device without a proper
