@@ -18,6 +18,15 @@ import QGroundControl.Viewer3D
 Item {
     id: _root
 
+    // The ApplicationWindow this view lives in. Reached via the attached property rather than the
+    // `mainWindow` id, which does not resolve reliably from inside the FlyView component tree.
+    readonly property var _appWindow: ApplicationWindow.window
+
+    // Device safe-area insets (notch, rounded corners, home indicator) reported by the OS at the
+    // window level. Zero on desktop. Used to keep full-bleed chrome (the PiP) clear of the edges.
+    readonly property real _safeAreaLeft:   _appWindow ? _appWindow.SafeArea.margins.left   : 0
+    readonly property real _safeAreaBottom: _appWindow ? _appWindow.SafeArea.margins.bottom : 0
+
     readonly property bool _is3DMode:       QGCViewer3DManager.displayMode === QGCViewer3DManager.View3D
     readonly property bool _keepSceneAlive: QGroundControl.settingsManager.viewer3DSettings.keepSceneAlive.rawValue
 
@@ -68,9 +77,17 @@ Item {
         bottomEdgeLeftInset:    _pipView.bottomEdgeLeftInset
     }
 
+    // Full-bleed map / video / 3D background layer.
+    // The negative margins cancel out the window's safe-area insets (notch, rounded corners,
+    // home indicator on mobile) so the map fills the entire screen edge-to-edge. The UI chrome
+    // below is parented to _root instead, which stays within the safe-area-inset content area.
     Item {
-        id:                 mapHolder
-        anchors.fill:       parent
+        id:                     mapHolder
+        anchors.fill:           parent
+        anchors.topMargin:      _appWindow ? -_appWindow.SafeArea.margins.top : 0
+        anchors.bottomMargin:   _appWindow ? -_appWindow.SafeArea.margins.bottom : 0
+        anchors.leftMargin:     _appWindow ? -_appWindow.SafeArea.margins.left : 0
+        anchors.rightMargin:    _appWindow ? -_appWindow.SafeArea.margins.right : 0
 
         FlyViewMap {
             id:                     mapControl
@@ -89,11 +106,15 @@ Item {
             pipView:    _pipView
         }
 
+        // The PiP lives inside the full-bleed mapHolder because PipState anchors the full-screen
+        // map/video to pipView.parent. Its own corner is inset by the safe area so the small
+        // preview stays clear of the rounded corner and home indicator.
         PipView {
             id:                     _pipView
             anchors.left:           parent.left
             anchors.bottom:         parent.bottom
-            anchors.margins:        _toolsMargin
+            anchors.leftMargin:     _toolsMargin + _safeAreaLeft
+            anchors.bottomMargin:   _toolsMargin + _safeAreaBottom
             item1IsFullSettingsKey: "MainFlyWindowIsMap"
             item1:                  mapControl
             item2:                  QGroundControl.videoManager.hasVideo ? videoControl : null
@@ -101,60 +122,8 @@ Item {
                                         (videoControl.pipState.state === videoControl.pipState.pipState || mapControl.pipState.state === mapControl.pipState.pipState)
             z:                      QGroundControl.zOrderWidgets
 
-            property real leftEdgeBottomInset: visible ? width + anchors.margins : 0
-            property real bottomEdgeLeftInset: visible ? height + anchors.margins : 0
-        }
-
-        FlyViewWidgetLayer {
-            id:                     widgetLayer
-            anchors.top:            parent.top
-            anchors.bottom:         parent.bottom
-            anchors.left:           parent.left
-            anchors.right:          guidedValueSlider.visible ? guidedValueSlider.left : parent.right
-            anchors.margins:        _widgetMargin
-            anchors.topMargin:      toolbar.height + _widgetMargin
-            z:                      _fullItemZorder + 2
-            parentToolInsets:       _toolInsets
-            mapControl:             _mapControl
-            visible:                !QGroundControl.videoManager.fullScreen
-        }
-
-        FlyViewCustomLayer {
-            id:                 customOverlay
-            anchors.fill:       widgetLayer
-            z:                  _fullItemZorder + 2
-            parentToolInsets:   widgetLayer.totalToolInsets
-            mapControl:         _mapControl
-            visible:            !QGroundControl.videoManager.fullScreen
-        }
-
-        // Development tool for visualizing the insets for a paticular layer, show if needed
-        FlyViewInsetViewer {
-            id:                     widgetLayerInsetViewer
-            anchors.top:            parent.top
-            anchors.bottom:         parent.bottom
-            anchors.left:           parent.left
-            anchors.right:          guidedValueSlider.visible ? guidedValueSlider.left : parent.right
-            z:                      widgetLayer.z + 1
-            insetsToView:           widgetLayer.totalToolInsets
-            visible:                false
-        }
-
-        GuidedActionsController {
-            id:                 guidedActionsController
-            missionController:  _missionController
-            guidedValueSlider:     _guidedValueSlider
-        }
-
-        //-- Guided value slider (e.g. altitude)
-        GuidedValueSlider {
-            id:                 guidedValueSlider
-            anchors.right:      parent.right
-            anchors.top:        parent.top
-            anchors.bottom:     parent.bottom
-            anchors.topMargin:  toolbar.height
-            z:                  QGroundControl.zOrderTopMost
-            visible:            false
+            property real leftEdgeBottomInset: visible ? width + anchors.leftMargin : 0
+            property real bottomEdgeLeftInset: visible ? height + anchors.bottomMargin : 0
         }
 
         Loader {
@@ -179,6 +148,61 @@ Item {
                 }
             }
         }
+    }
+
+    // UI chrome. Parented to _root (which fills the safe-area-inset content area) so the toolbar
+    // and instruments stay clear of the notch, rounded corners and home indicator while the map
+    // bleeds full-screen behind them.
+    FlyViewWidgetLayer {
+        id:                     widgetLayer
+        anchors.top:            parent.top
+        anchors.bottom:         parent.bottom
+        anchors.left:           parent.left
+        anchors.right:          guidedValueSlider.visible ? guidedValueSlider.left : parent.right
+        anchors.margins:        _widgetMargin
+        anchors.topMargin:      toolbar.height + _widgetMargin
+        z:                      _fullItemZorder + 2
+        parentToolInsets:       _toolInsets
+        mapControl:             _mapControl
+        visible:                !QGroundControl.videoManager.fullScreen
+    }
+
+    FlyViewCustomLayer {
+        id:                 customOverlay
+        anchors.fill:       widgetLayer
+        z:                  _fullItemZorder + 2
+        parentToolInsets:   widgetLayer.totalToolInsets
+        mapControl:         _mapControl
+        visible:            !QGroundControl.videoManager.fullScreen
+    }
+
+    // Development tool for visualizing the insets for a paticular layer, show if needed
+    FlyViewInsetViewer {
+        id:                     widgetLayerInsetViewer
+        anchors.top:            parent.top
+        anchors.bottom:         parent.bottom
+        anchors.left:           parent.left
+        anchors.right:          guidedValueSlider.visible ? guidedValueSlider.left : parent.right
+        z:                      widgetLayer.z + 1
+        insetsToView:           widgetLayer.totalToolInsets
+        visible:                false
+    }
+
+    GuidedActionsController {
+        id:                 guidedActionsController
+        missionController:  _missionController
+        guidedValueSlider:     _guidedValueSlider
+    }
+
+    //-- Guided value slider (e.g. altitude)
+    GuidedValueSlider {
+        id:                 guidedValueSlider
+        anchors.right:      parent.right
+        anchors.top:        parent.top
+        anchors.bottom:     parent.bottom
+        anchors.topMargin:  toolbar.height
+        z:                  QGroundControl.zOrderTopMost
+        visible:            false
     }
 
     FlyViewToolBar {
