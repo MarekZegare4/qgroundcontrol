@@ -29,9 +29,21 @@ endif()
 # ----------------------------------------------------------------------------
 cmake_path(GET QGC_MACOS_ICON_PATH FILENAME MACOSX_BUNDLE_ICON_FILE)
 
+# MACOSX_BUNDLE_INFO_PLIST is the property CMake's non-Xcode generators actually
+# honor for both MACOS and IOS bundles (it does the same $(EXECUTABLE_NAME)-style
+# substitution either way). CMAKE_XCODE_ATTRIBUTE_INFOPLIST_FILE below only takes
+# effect with the Xcode generator, which this project's iOS build doesn't use
+# (Ninja Multi-Config) — without this branch the iOS bundle silently shipped the
+# macOS Info.plist (NSPrincipalClass=NSApplication, no UIApplicationSceneManifest),
+# which crashes UIKit's _UIApplicationMainPreparations at launch.
+set(QGC_APPLE_INFO_PLIST_PATH "${QGC_MACOS_PLIST_PATH}")
+if(IOS)
+    set(QGC_APPLE_INFO_PLIST_PATH "${CMAKE_SOURCE_DIR}/deploy/ios/iOS-Info.plist")
+endif()
+
 set_target_properties(${CMAKE_PROJECT_NAME}
     PROPERTIES
-        MACOSX_BUNDLE_INFO_PLIST "${QGC_MACOS_PLIST_PATH}"
+        MACOSX_BUNDLE_INFO_PLIST "${QGC_APPLE_INFO_PLIST_PATH}"
         MACOSX_BUNDLE_BUNDLE_NAME "${CMAKE_PROJECT_NAME}"
         MACOSX_BUNDLE_BUNDLE_VERSION "${CMAKE_PROJECT_VERSION}"
         MACOSX_BUNDLE_COPYRIGHT "${QGC_APP_COPYRIGHT}"

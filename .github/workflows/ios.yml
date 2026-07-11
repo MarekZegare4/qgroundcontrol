@@ -88,12 +88,20 @@ jobs:
           build-dir: ${{ runner.temp }}/build
           build-type: ${{ matrix.build_type }}
 
+      # No Apple Developer identity is configured here, so this produces an ad-hoc
+      # signed .ipa: valid for inspection/re-signing (AltStore, Sideloadly, etc.) but
+      # not installable on a real device without a proper provisioning profile.
+      - name: Create IPA
+        if: matrix.build_type == 'Release'
+        uses: ./.github/actions/cmake-install
+        with:
+          build-dir: ${{ runner.temp }}/build
+          build-type: ${{ matrix.build_type }}
+
       - name: Attest and Upload
         if: matrix.build_type == 'Release'
         uses: ./.github/actions/attest-and-upload
         with:
-          artifact-name: ${{ env.PACKAGE }}.app
-          # iOS uses Ninja Multi-Config; the .app lands in build/<config>/, not build/.
-          artifact-source-path: ${{ runner.temp }}/build/${{ matrix.build_type }}/${{ env.PACKAGE }}.app
+          artifact-name: ${{ env.PACKAGE }}.ipa
           package-name: ${{ env.PACKAGE }}
           upload-aws: 'false'

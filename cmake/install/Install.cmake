@@ -225,6 +225,52 @@ elseif(WIN32)
     install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/CreateWinInstaller.cmake")
 
 # ----------------------------------------------------------------------------
+# iOS Installation, Ad-Hoc Signing & IPA Creation
+# ----------------------------------------------------------------------------
+elseif(IOS)
+    install(CODE "set(QGC_STAGING_BUNDLE_PATH \"${CMAKE_BINARY_DIR}/staging/${CMAKE_PROJECT_NAME}.app\")")
+
+    # Xcode's "Embed Frameworks" build phase never runs under the Ninja Multi-Config
+    # generator this project builds iOS with, so nothing copies the dynamically-linked
+    # frameworks into the bundle or sets up the @executable_path/Frameworks rpath.
+    # Replicate it manually: our own GStreamerMobile.framework build target, plus
+    # whatever qt_add_ios_ffmpeg_libraries() (cmake/platform/Apple.cmake) recorded on
+    # XCODE_EMBED_FRAMEWORKS when it linked Qt Multimedia's FFmpeg backend.
+    if(TARGET GStreamerMobileXcfw)
+        install(TARGETS GStreamerMobileXcfw FRAMEWORK DESTINATION "${CMAKE_PROJECT_NAME}.app/Frameworks")
+    endif()
+
+    get_target_property(_qgc_ios_ffmpeg_frameworks ${CMAKE_PROJECT_NAME} XCODE_EMBED_FRAMEWORKS)
+    if(NOT _qgc_ios_ffmpeg_frameworks)
+        set(_qgc_ios_ffmpeg_frameworks "")
+    endif()
+    install(CODE "set(QGC_IOS_EMBED_FRAMEWORKS \"${_qgc_ios_ffmpeg_frameworks}\")")
+    install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/EmbedIOSFrameworks.cmake")
+
+    get_target_property(_qgc_ios_launch_screen ${CMAKE_PROJECT_NAME} QT_IOS_LAUNCH_SCREEN)
+    if(NOT _qgc_ios_launch_screen)
+        set(_qgc_ios_launch_screen "")
+    endif()
+    install(CODE "set(QGC_IOS_LAUNCH_SCREEN_SRC \"${_qgc_ios_launch_screen}\")")
+    install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/CompileIOSLaunchScreen.cmake")
+
+    # No Apple Developer identity is configured for CI/local packaging, so the bundle
+    # is ad-hoc signed. This produces a valid .ipa for inspection/re-signing (e.g.
+    # AltStore, Sideloadly) but is NOT installable on a real device without a proper
+    # provisioning profile — that requires QGC_MACOS_SIGN_WITH_IDENTITY-style tooling
+    # this project doesn't have wired up for iOS yet.
+    message(STATUS "QGC: iOS bundle will be signed with ad-hoc signature")
+    install(CODE "
+        message(STATUS \"QGC: Signing iOS bundle (ad-hoc)\")
+        execute_process(
+            COMMAND codesign --deep --force -s - \"\${QGC_STAGING_BUNDLE_PATH}\"
+            COMMAND_ERROR_IS_FATAL ANY
+        )
+    ")
+
+    install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/install/CreateIOSIPA.cmake")
+
+# ----------------------------------------------------------------------------
 # macOS Installation, Code Signing & DMG Creation
 # ----------------------------------------------------------------------------
 elseif(MACOS)
@@ -320,7 +366,7 @@ if(_qgc_cpack_module)
     )
 elseif(LINUX AND QGC_LINUX_DISTRO_FAMILY STREQUAL "arch")
     include("${CMAKE_SOURCE_DIR}/cmake/install/CreateArchPackage.cmake")
-elseif(LINUX OR WIN32 OR MACOS)
+elseif(LINUX OR WIN32 OR MACOS OR IOS)
     add_custom_target(qgc-package
         COMMAND "${CMAKE_COMMAND}" -E echo
             "QGC: QGC_CPACK_GENERATOR unset; the default installer is produced by 'cmake --install'."
